@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>차량 사진 촬영</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
     --bg:#f5f6f8;
@@ -289,20 +288,18 @@ async function saveAllPhotos(){
   const capturedIdx = state.map((v,i)=>v?i:null).filter(i=>i!==null);
   if(capturedIdx.length === 0) return;
 
-  showToast("압축 중...");
-  const zip = new JSZip();
+  showToast("저장 준비 중...");
+  const files = [];
   for(const i of capturedIdx){
     const blob = await (await fetch(state[i])).blob();
-    zip.file(`${i+1}_${SHOTS[i]}.jpg`, blob);
+    files.push(new File([blob], `${i+1}_${SHOTS[i]}.jpg`, { type: "image/jpeg" }));
   }
-  const zipBlob = await zip.generateAsync({ type: "blob" });
-  const zipFile = new File([zipBlob], "차량사진.zip", { type: "application/zip" });
 
-  // 1순위: 공유 시트 (안드로이드는 대부분 zip도 '파일에 저장' 가능)
-  if(navigator.canShare && navigator.canShare({ files: [zipFile] })){
+  // 1순위: 공유 시트에 여러 장을 한 번에 전달 (갤러리 앱으로 '저장'하면 개별 이미지로 저장됨)
+  if(navigator.canShare && navigator.canShare({ files })){
     try{
-      await navigator.share({ files: [zipFile], title: "차량 사진" });
-      showToast("공유 시트에서 저장 위치를 선택해주세요");
+      await navigator.share({ files, title: "차량 사진" });
+      showToast("공유 시트에서 갤러리(사진 앱)를 선택해 저장해주세요");
       return;
     }catch(e){
       if(e.name === "AbortError"){
@@ -312,16 +309,20 @@ async function saveAllPhotos(){
     }
   }
 
-  // 2순위: 다운로드
-  const url = URL.createObjectURL(zipBlob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "차량사진.zip";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-  showToast(`${capturedIdx.length}장을 다운로드 폴더에 zip으로 저장했습니다`);
+  // 2순위: 공유 API 미지원 시, 이미지를 한 장씩 순차 다운로드
+  showToast("공유가 지원되지 않아 순차 다운로드로 저장합니다");
+  for(let n=0;n<files.length;n++){
+    const url = URL.createObjectURL(files[n]);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = files[n].name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    await new Promise(r => setTimeout(r, 400));
+  }
+  showToast(`${files.length}장을 다운로드 폴더에 개별 저장했습니다`);
 }
 
 let toastTimer = null;
