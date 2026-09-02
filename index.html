@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>차량 사진 촬영</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
     --bg:#f5f6f8;
@@ -26,19 +27,6 @@
 
   /* ---------- 리스트 화면 ---------- */
   .screen{max-width:720px;margin:0 auto;padding:16px 16px 40px;}
-  .tabs{display:flex;gap:8px;margin-bottom:14px;}
-  .tab{
-    flex:1;text-align:center;padding:12px 0;border-radius:10px;
-    font-size:15px;font-weight:600;border:1px solid var(--line);
-    background:var(--panel);color:var(--sub);
-  }
-  .tab.active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
-
-  .notice{
-    background:var(--panel);border:1px solid var(--line);border-radius:10px;
-    padding:12px 14px;font-size:12.5px;color:var(--sub);line-height:1.6;margin-bottom:16px;
-  }
-  .notice b{color:var(--ink);}
 
   .grid{
     display:grid;grid-template-columns:repeat(2,1fr);gap:12px;
@@ -61,13 +49,6 @@
     display:flex;align-items:center;justify-content:center;z-index:2;
   }
   .shot.done .badge{background:var(--done);}
-  .shot .save-btn{
-    position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;
-    background:rgba(0,0,0,.55);border:none;color:#fff;z-index:2;
-    display:flex;align-items:center;justify-content:center;
-  }
-  .shot .save-btn svg{width:16px;height:16px;}
-  .shot .save-btn.saved{background:var(--done);}
   .shot .cam-icon{
     width:40px;height:40px;color:#b8bcc6;
   }
@@ -162,17 +143,8 @@
 <body>
 
 <div class="screen">
-  <div class="tabs">
-    <div class="tab active">차량 사진</div>
-    <div class="tab">점검 항목</div>
-  </div>
-
-  <div class="notice">
-    <b>※ 차번호 → 전면 → 앞유리 → 조수석측 앞 휀다/휠 → 조수석측 뒤 휠/휀다 → 후면 → 운전석측 뒤 휀다/휠 → 운전석측 앞 휠/휀다</b> 순서로 촬영합니다.<br>
-    ※ 사진은 반드시 화면 내 카메라로 직접 촬영해야 하며, 기기에 저장된 이미지는 사용할 수 없습니다.
-  </div>
-
   <div class="grid" id="grid"></div>
+  <button class="footer-btn ready" id="saveAllBtn">전체 저장</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -215,6 +187,7 @@ let stream = null;
 let facing = "environment"; // 기본 후면 카메라
 
 const grid = document.getElementById("grid");
+const saveAllBtn = document.getElementById("saveAllBtn");
 const cameraScreen = document.getElementById("cameraScreen");
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
@@ -232,21 +205,24 @@ function renderGrid(){
       <div class="thumb">
         <span class="badge">${state[i] ? "✓" : i+1}</span>
         ${state[i]
-          ? `<img src="${state[i]}" alt="${name}"><button class="save-btn" data-idx="${i}" title="휴대폰에 저장"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14"/></svg></button>`
+          ? `<img src="${state[i]}" alt="${name}">`
           : `<svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>`
         }
       </div>
       <div class="label">${name}</div>
     `;
-    if(state[i]){
-      el.querySelector(".save-btn").addEventListener("click", (e) => {
-        e.stopPropagation();
-        saveToDevice(i);
-      });
-    }
     el.querySelector(".thumb").addEventListener("click", () => openCamera(i));
     grid.appendChild(el);
   });
+
+  const count = state.filter(Boolean).length;
+  if(count === 0){
+    saveAllBtn.textContent = "촬영 후 저장할 수 있습니다";
+    saveAllBtn.classList.remove("ready");
+  } else {
+    saveAllBtn.textContent = `전체 저장 (${count}장)`;
+    saveAllBtn.classList.add("ready");
+  }
 }
 
 async function openCamera(index){
@@ -294,9 +270,6 @@ function shoot(){
   canvas.getContext("2d").drawImage(video, 0, 0);
   state[activeIndex] = canvas.toDataURL("image/jpeg", 0.85);
 
-  // 촬영 즉시 기기에 자동 저장 (다운로드 폴더 경유 → 갤러리 앱에 "Download" 앨범으로 표시됨)
-  autoSaveToDevice(activeIndex, canvas);
-
   // 다음 촬영 항목으로 자동 이동, 마지막이면 리스트로 복귀
   const next = state.findIndex((s, i) => !s && i !== activeIndex);
   setTimeout(() => {
@@ -312,65 +285,43 @@ function shoot(){
   }, 180);
 }
 
-function autoSaveToDevice(index, canvasEl){
-  canvasEl.toBlob((blob) => {
-    if(!blob){
-      showToast("자동 저장 실패: 이미지 변환 오류");
-      return;
-    }
-    const filename = `${SHOTS[index]}_${index+1}.jpg`;
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    showToast(`"${SHOTS[index]}" 저장됨 (다운로드 폴더)`);
-  }, "image/jpeg", 0.85);
-}
+async function saveAllPhotos(){
+  const capturedIdx = state.map((v,i)=>v?i:null).filter(i=>i!==null);
+  if(capturedIdx.length === 0) return;
 
-async function saveToDevice(index){
-  const dataUrl = state[index];
-  if(!dataUrl) return;
-  const filename = `${SHOTS[index]}.jpg`;
-
-  let blob;
-  try{
-    blob = await (await fetch(dataUrl)).blob();
-  }catch(e){
-    showToast("사진 데이터를 불러오지 못했습니다: " + e.message);
-    return;
+  showToast("압축 중...");
+  const zip = new JSZip();
+  for(const i of capturedIdx){
+    const blob = await (await fetch(state[i])).blob();
+    zip.file(`${i+1}_${SHOTS[i]}.jpg`, blob);
   }
-  const file = new File([blob], filename, { type: "image/jpeg" });
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  const zipFile = new File([zipBlob], "차량사진.zip", { type: "application/zip" });
 
-  // 1순위: 공유 시트로 "이미지 저장" (아이폰/안드로이드 모두 갤러리 저장 가능)
-  if(navigator.canShare && navigator.canShare({ files: [file] })){
+  // 1순위: 공유 시트 (안드로이드는 대부분 zip도 '파일에 저장' 가능)
+  if(navigator.canShare && navigator.canShare({ files: [zipFile] })){
     try{
-      await navigator.share({ files: [file], title: SHOTS[index] });
-      showToast("공유 시트에서 '이미지 저장'을 선택하면 갤러리에 저장됩니다");
+      await navigator.share({ files: [zipFile], title: "차량 사진" });
+      showToast("공유 시트에서 저장 위치를 선택해주세요");
       return;
     }catch(e){
       if(e.name === "AbortError"){
-        showToast("공유가 취소되었습니다");
+        showToast("저장이 취소되었습니다");
         return;
       }
-      showToast("공유 실패: " + e.message + " → 다운로드로 대체합니다");
     }
-  } else {
-    showToast("이 브라우저는 공유 저장을 지원하지 않아 다운로드로 저장합니다");
   }
 
-  // 2순위(공유 API 미지원 브라우저): blob URL로 다운로드
-  const blobUrl = URL.createObjectURL(blob);
+  // 2순위: 다운로드
+  const url = URL.createObjectURL(zipBlob);
   const link = document.createElement("a");
-  link.href = blobUrl;
-  link.download = filename;
+  link.href = url;
+  link.download = "차량사진.zip";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  showToast(`${capturedIdx.length}장을 다운로드 폴더에 zip으로 저장했습니다`);
 }
 
 let toastTimer = null;
@@ -388,6 +339,7 @@ document.getElementById("flipBtn").addEventListener("click", () => {
   facing = facing === "environment" ? "user" : "environment";
   startStream();
 });
+document.getElementById("saveAllBtn").addEventListener("click", saveAllPhotos);
 
 renderGrid();
 </script>
