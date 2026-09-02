@@ -178,6 +178,7 @@
     <canvas id="canvas"></canvas>
     <div class="cam-error" id="camError">
       <p>카메라를 사용할 수 없습니다.<br>브라우저 설정에서 카메라 권한을 허용해주세요.</p>
+      <p id="camErrorDetail" style="font-size:11px;color:#8a8d94;"></p>
     </div>
   </div>
 
@@ -257,26 +258,35 @@ async function openCamera(index){
 async function startStream(){
   stopStream();
   camError.classList.remove("show");
-  try{
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: facing },
-        width: { ideal: 3840 },
-        height: { ideal: 2160 }
-      },
-      audio: false
-    });
-    video.srcObject = stream;
 
-    // 지원되는 기기는 연속 자동초점으로 설정
-    const track = stream.getVideoTracks()[0];
-    const caps = track.getCapabilities ? track.getCapabilities() : {};
-    if(caps.focusMode && caps.focusMode.includes("continuous")){
-      try{ await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); }catch(e){}
+  const attempts = [
+    { video: { facingMode: { ideal: facing }, width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false },
+    { video: { facingMode: { ideal: facing } }, audio: false },
+    { video: true, audio: false }
+  ];
+
+  let lastErr = null;
+  for(const constraints of attempts){
+    try{
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+
+      // 지원되는 기기는 연속 자동초점으로 설정
+      const track = stream.getVideoTracks()[0];
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      if(caps.focusMode && caps.focusMode.includes("continuous")){
+        try{ await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); }catch(e){}
+      }
+      return; // 성공하면 종료
+    }catch(err){
+      lastErr = err;
     }
-  }catch(err){
-    camError.classList.add("show");
   }
+
+  // 모든 시도 실패
+  camError.classList.add("show");
+  const detail = document.getElementById("camErrorDetail");
+  if(detail && lastErr) detail.textContent = `(${lastErr.name}: ${lastErr.message})`;
 }
 
 function stopStream(){
