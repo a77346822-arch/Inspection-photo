@@ -324,31 +324,15 @@ function shoot(){
   });
 }
 
-// 안드로이드 Chrome 등 ImageCapture 지원 기기: 카메라의 실제 정지사진 파이프라인 사용(고화질)
-// 미지원 기기(아이폰 Safari 등): 비디오 프레임 캡처로 대체
-// Blob을 그대로 반환(base64 변환 없이) → 메모리 사용량과 처리 시간을 줄여 촬영 반응 속도 개선
+// 비디오 프레임 캡처 (toBlob은 일부 아이폰 사파리에서 콜백이 안 불리는 버그가 있어
+// 더 안정적인 toDataURL 방식을 사용)
 async function captureHighQualityPhoto(){
-  const track = stream.getVideoTracks()[0];
-  if(window.ImageCapture && track){
-    try{
-      const imageCapture = new ImageCapture(track);
-      let options = {};
-      try{
-        const caps = await imageCapture.getPhotoCapabilities();
-        if(caps.imageWidth && caps.imageHeight){
-          options.imageWidth = caps.imageWidth.max;
-          options.imageHeight = caps.imageHeight.max;
-        }
-      }catch(e){ /* getPhotoCapabilities 미지원 기기는 기본 옵션으로 진행 */ }
-      return await imageCapture.takePhoto(options);
-    }catch(e){
-      // 실패 시 비디오 프레임 캡처로 대체
-    }
-  }
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext("2d").drawImage(video, 0, 0);
-  return await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.95));
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+  const res = await fetch(dataUrl);
+  return await res.blob();
 }
 
 async function saveCollage(){
