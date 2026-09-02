@@ -297,37 +297,68 @@ function shoot(){
   void flash.offsetWidth; // 리플로우로 애니메이션 재시작
   flash.classList.add("fire");
 
+  captureHighQualityPhoto().then((dataUrl) => {
+    state[activeIndex] = dataUrl;
+
+    // 촬영 즉시 기기에 저장 시도 (안드로이드: 완전 자동 / 아이폰: 공유 시트 1탭)
+    autoSaveToDeviceFromDataUrl(activeIndex, dataUrl);
+
+    // 다음 촬영 항목으로 자동 이동, 마지막이면 리스트로 복귀
+    const next = state.findIndex((s, i) => !s && i !== activeIndex);
+    setTimeout(() => {
+      if(next === -1 || state.every(Boolean)){
+        closeCamera();
+        renderGrid();
+      } else {
+        activeIndex = next;
+        camIndex.textContent = next + 1;
+        guideLabel.textContent = SHOTS[next];
+        renderGrid();
+      }
+    }, 180);
+  });
+}
+
+// 안드로이드 Chrome 등 ImageCapture 지원 기기: 카메라의 실제 정지사진 파이프라인 사용(고화질)
+// 미지원 기기(아이폰 Safari 등): 비디오 프레임 캡처로 대체
+async function captureHighQualityPhoto(){
+  const track = stream.getVideoTracks()[0];
+  if(window.ImageCapture && track){
+    try{
+      const imageCapture = new ImageCapture(track);
+      let options = {};
+      try{
+        const caps = await imageCapture.getPhotoCapabilities();
+        if(caps.imageWidth && caps.imageHeight){
+          options.imageWidth = caps.imageWidth.max;
+          options.imageHeight = caps.imageHeight.max;
+        }
+      }catch(e){ /* getPhotoCapabilities 미지원 기기는 기본 옵션으로 진행 */ }
+      const blob = await imageCapture.takePhoto(options);
+      return await blobToDataUrl(blob);
+    }catch(e){
+      // 실패 시 비디오 프레임 캡처로 대체
+    }
+  }
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext("2d").drawImage(video, 0, 0);
-  state[activeIndex] = canvas.toDataURL("image/jpeg", 0.95);
+  return canvas.toDataURL("image/jpeg", 0.95);
+}
 
-  // 촬영 즉시 기기에 저장 시도 (안드로이드: 완전 자동 / 아이폰: 공유 시트 1탭)
-  autoSaveToDevice(activeIndex, canvas);
-
-  // 다음 촬영 항목으로 자동 이동, 마지막이면 리스트로 복귀
-  const next = state.findIndex((s, i) => !s && i !== activeIndex);
-  setTimeout(() => {
-    if(next === -1 || state.every(Boolean)){
-      closeCamera();
-      renderGrid();
-    } else {
-      activeIndex = next;
-      camIndex.textContent = next + 1;
-      guideLabel.textContent = SHOTS[next];
-      renderGrid();
-    }
-  }, 180);
+function blobToDataUrl(blob){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) && !window.MSStream;
 
-function autoSaveToDevice(index, canvasEl){
-  canvasEl.toBlob(async (blob) => {
-    if(!blob){
-      showToast("자동 저장 실패: 이미지 변환 오류");
-      return;
-    }
+function autoSaveToDeviceFromDataUrl(index, dataUrl){
+  fetch(dataUrl).then(r => r.blob()).then(async (blob) => {
     const filename = `${index+1}_${SHOTS[index]}.jpg`;
     const file = new File([blob], filename, { type: "image/jpeg" });
 
@@ -362,7 +393,7 @@ function autoSaveToDevice(index, canvasEl){
     saved[index] = true;
     renderGrid();
     showToast(`"${SHOTS[index]}" 저장됨 (다운로드 폴더)`);
-  }, "image/jpeg", 0.95);
+  });
 }
 
 async function saveSinglePhoto(index){
