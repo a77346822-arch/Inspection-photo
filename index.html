@@ -299,7 +299,7 @@ async function saveAllPhotos(){
   if(navigator.canShare && navigator.canShare({ files })){
     try{
       await navigator.share({ files, title: "차량 사진" });
-      showToast("공유 시트에서 갤러리(사진 앱)를 선택해 저장해주세요");
+      showToast("공유 시트에서 '갤러리' 또는 '내 파일'을 선택해 저장해주세요");
       return;
     }catch(e){
       if(e.name === "AbortError"){
@@ -310,7 +310,8 @@ async function saveAllPhotos(){
   }
 
   // 2순위: 공유 API 미지원 시, 이미지를 한 장씩 순차 다운로드
-  showToast("공유가 지원되지 않아 순차 다운로드로 저장합니다");
+  showToast("여러 파일 다운로드 허용 알림이 뜨면 '허용'을 눌러주세요");
+  await new Promise(r => setTimeout(r, 1200));
   for(let n=0;n<files.length;n++){
     const url = URL.createObjectURL(files[n]);
     const link = document.createElement("a");
@@ -319,10 +320,11 @@ async function saveAllPhotos(){
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 8000);
-    await new Promise(r => setTimeout(r, 400));
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    showToast(`저장 중... (${n+1}/${files.length})`);
+    await new Promise(r => setTimeout(r, 900));
   }
-  showToast(`${files.length}장을 다운로드 폴더에 개별 저장했습니다`);
+  showToast(`${files.length}장을 다운로드 폴더에 저장했습니다`);
 }
 
 let toastTimer = null;
