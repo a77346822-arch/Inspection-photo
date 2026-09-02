@@ -212,10 +212,9 @@ function renderGrid(){
     el.className = "shot" + (state[i] ? " done" : "");
     el.innerHTML = `
       <div class="thumb">
-        <span class="badge">${state[i] ? "✓" : i+1}</span>
         ${state[i]
           ? `<img src="${state[i]}" alt="${name}">`
-          : `<svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>`
+          : `<span class="badge">${i+1}</span><svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>`
         }
       </div>
       <div class="label">${name}</div>
@@ -258,6 +257,20 @@ async function startStream(){
       if(caps.whiteBalanceMode && caps.whiteBalanceMode.includes("continuous")) advanced.push({ whiteBalanceMode: "continuous" });
       if(advanced.length){
         try{ await track.applyConstraints({ advanced }); }catch(e){}
+      }
+
+      // 카메라를 연 직후 화면 중앙을 기준으로 한 번 강제 초점 시도 (초기 흐릿함 완화)
+      if(caps.focusMode){
+        setTimeout(async () => {
+          try{
+            if(caps.pointsOfInterest !== undefined){
+              await track.applyConstraints({ advanced: [{ pointsOfInterest: [{ x: 0.5, y: 0.5 }], focusMode: "single-shot" }] });
+            }
+            if(caps.focusMode.includes("continuous")){
+              await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+            }
+          }catch(e){}
+        }, 400);
       }
       return; // 성공하면 종료
     }catch(err){
@@ -367,20 +380,6 @@ async function saveCollage(){
   }
 
   const blob = await new Promise(resolve => canvasEl.toBlob(resolve, "image/jpeg", 0.92));
-  const file = new File([blob], "차량사진_전체.jpg", { type: "image/jpeg" });
-
-  if(navigator.canShare && navigator.canShare({ files: [file] })){
-    try{
-      await navigator.share({ files: [file], title: "차량 사진 전체" });
-      showToast("공유 시트에서 저장을 선택해주세요");
-      return;
-    }catch(e){
-      if(e.name === "AbortError"){
-        showToast("저장이 취소되었습니다");
-        return;
-      }
-    }
-  }
 
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -390,7 +389,7 @@ async function saveCollage(){
   link.click();
   document.body.removeChild(link);
   setTimeout(() => URL.revokeObjectURL(url), 8000);
-  showToast("화면 캡처를 저장했습니다");
+  showToast("저장되었습니다");
 }
 
 let toastTimer = null;
