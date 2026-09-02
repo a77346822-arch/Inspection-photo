@@ -308,6 +308,9 @@ function shoot(){
     if(state[activeIndex]) URL.revokeObjectURL(state[activeIndex]);
     state[activeIndex] = URL.createObjectURL(blob);
 
+    // 일부 기기에서 캡처 후 프리뷰가 일시정지되는 경우 대비
+    if(video.paused) video.play().catch(() => {});
+
     // 다음 촬영 항목으로 자동 이동, 마지막이면 리스트로 복귀
     const next = state.findIndex((s, i) => !s && i !== activeIndex);
     setTimeout(() => {
@@ -324,15 +327,25 @@ function shoot(){
   });
 }
 
-// 비디오 프레임 캡처 (toBlob은 일부 아이폰 사파리에서 콜백이 안 불리는 버그가 있어
-// 더 안정적인 toDataURL 방식을 사용)
+// 비디오 프레임 캡처. base64 → Blob 변환은 fetch()보다 가벼운 atob 방식 사용
+// (일부 아이폰에서 fetch(dataURL) 반복 호출이 카메라 트랙에 부담을 줘 프리뷰가 멈추는 문제 방지)
 async function captureHighQualityPhoto(){
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext("2d").drawImage(video, 0, 0);
   const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
-  const res = await fetch(dataUrl);
-  return await res.blob();
+  return dataURLtoBlob(dataUrl);
+}
+
+function dataURLtoBlob(dataUrl){
+  const [header, base64] = dataUrl.split(",");
+  const mimeMatch = header.match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+  const binary = atob(base64);
+  const len = binary.length;
+  const u8 = new Uint8Array(len);
+  for(let i = 0; i < len; i++) u8[i] = binary.charCodeAt(i);
+  return new Blob([u8], { type: mime });
 }
 
 async function saveCollage(){
