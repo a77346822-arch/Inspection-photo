@@ -161,7 +161,7 @@
   <div class="flash" id="flash"></div>
   <div class="cam-top">
     <button class="cam-close" id="camClose">✕</button>
-    <div class="cam-progress"><span id="camIndex">1</span> / 12</div>
+    <div class="cam-progress"><span id="camIndex">1</span> / 11</div>
     <div style="width:36px;"></div>
   </div>
 
@@ -186,7 +186,7 @@
 
 <script>
 const SHOTS = [
-  "차번호","전면","앞유리","조수석측 앞 휀다","조수석측 앞 휠",
+  "전면","앞유리","조수석측 앞 휀다","조수석측 앞 휠",
   "조수석측 뒤 휠","조수석측 뒤 휀다","후면","운전석측 뒤 휀다",
   "운전석측 뒤 휠","운전석측 앞 휠","운전석측 앞 휀다"
 ];
@@ -308,8 +308,8 @@ function shoot(){
     if(state[activeIndex]) URL.revokeObjectURL(state[activeIndex]);
     state[activeIndex] = URL.createObjectURL(blob);
 
-    // 일부 기기에서 캡처 후 프리뷰가 일시정지되는 경우 대비
-    if(video.paused) video.play().catch(() => {});
+    // 아이폰 사파리에서 캡처 후 프리뷰가 검게 멈추는 버그 대응: 스트림을 살짝 재연결
+    refreshPreview();
 
     // 다음 촬영 항목으로 자동 이동, 마지막이면 리스트로 복귀
     const next = state.findIndex((s, i) => !s && i !== activeIndex);
@@ -346,6 +346,15 @@ function dataURLtoBlob(dataUrl){
   const u8 = new Uint8Array(len);
   for(let i = 0; i < len; i++) u8[i] = binary.charCodeAt(i);
   return new Blob([u8], { type: mime });
+}
+
+function refreshPreview(){
+  if(!stream) return;
+  video.srcObject = null;
+  requestAnimationFrame(() => {
+    video.srcObject = stream;
+    video.play().catch(() => {});
+  });
 }
 
 async function saveCollage(){
