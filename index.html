@@ -61,6 +61,13 @@
     display:flex;align-items:center;justify-content:center;z-index:2;
   }
   .shot.done .badge{background:var(--done);}
+  .shot .save-btn{
+    position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;
+    background:rgba(0,0,0,.55);border:none;color:#fff;z-index:2;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .shot .save-btn svg{width:16px;height:16px;}
+  .shot .save-btn.saved{background:var(--done);}
   .shot .cam-icon{
     width:40px;height:40px;color:#b8bcc6;
   }
@@ -218,13 +225,19 @@ function renderGrid(){
       <div class="thumb">
         <span class="badge">${state[i] ? "✓" : i+1}</span>
         ${state[i]
-          ? `<img src="${state[i]}" alt="${name}">`
+          ? `<img src="${state[i]}" alt="${name}"><button class="save-btn" data-idx="${i}" title="휴대폰에 저장"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14"/></svg></button>`
           : `<svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>`
         }
       </div>
       <div class="label">${name}</div>
     `;
-    el.addEventListener("click", () => openCamera(i));
+    if(state[i]){
+      el.querySelector(".save-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        saveToDevice(i);
+      });
+    }
+    el.querySelector(".thumb").addEventListener("click", () => openCamera(i));
     grid.appendChild(el);
   });
   const remaining = state.filter(s => !s).length;
@@ -295,6 +308,33 @@ function shoot(){
       renderGrid();
     }
   }, 180);
+}
+
+async function saveToDevice(index){
+  const dataUrl = state[index];
+  if(!dataUrl) return;
+  const filename = `${SHOTS[index]}.jpg`;
+  const blob = await (await fetch(dataUrl)).blob();
+  const file = new File([blob], filename, { type: "image/jpeg" });
+
+  // 1순위: 공유 시트로 "이미지 저장" (아이폰/안드로이드 모두 갤러리 저장 가능)
+  if(navigator.canShare && navigator.canShare({ files: [file] })){
+    try{
+      await navigator.share({ files: [file], title: SHOTS[index] });
+      return;
+    }catch(e){
+      // 사용자가 공유 시트를 취소한 경우는 그냥 종료
+      if(e.name === "AbortError") return;
+    }
+  }
+
+  // 2순위(공유 API 미지원 브라우저): 다운로드로 대체
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 document.getElementById("shutterBtn").addEventListener("click", shoot);
