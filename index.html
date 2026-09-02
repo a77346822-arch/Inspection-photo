@@ -173,8 +173,6 @@
   </div>
 
   <div class="grid" id="grid"></div>
-
-  <button class="footer-btn" id="submitBtn">사진을 모두 촬영해주세요</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -217,7 +215,6 @@ let stream = null;
 let facing = "environment"; // 기본 후면 카메라
 
 const grid = document.getElementById("grid");
-const submitBtn = document.getElementById("submitBtn");
 const cameraScreen = document.getElementById("cameraScreen");
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
@@ -250,14 +247,6 @@ function renderGrid(){
     el.querySelector(".thumb").addEventListener("click", () => openCamera(i));
     grid.appendChild(el);
   });
-  const remaining = state.filter(s => !s).length;
-  if(remaining === 0){
-    submitBtn.textContent = "촬영 완료 · 제출하기";
-    submitBtn.classList.add("ready");
-  } else {
-    submitBtn.textContent = `사진을 모두 촬영해주세요 (${SHOTS.length - remaining}/${SHOTS.length})`;
-    submitBtn.classList.remove("ready");
-  }
 }
 
 async function openCamera(index){
@@ -398,11 +387,6 @@ document.getElementById("camClose").addEventListener("click", () => { closeCamer
 document.getElementById("flipBtn").addEventListener("click", () => {
   facing = facing === "environment" ? "user" : "environment";
   startStream();
-});
-submitBtn.addEventListener("click", () => {
-  if(state.every(Boolean)){
-    alert("11장 촬영 완료! 실제 서비스에서는 여기서 서버로 업로드합니다.");
-  }
 });
 
 renderGrid();
