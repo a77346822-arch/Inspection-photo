@@ -238,7 +238,7 @@ async function startStream(){
   camError.classList.remove("show");
 
   const attempts = [
-    { video: { facingMode: { ideal: facing }, width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false },
+    { video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
     { video: { facingMode: { ideal: facing } }, audio: false },
     { video: true, audio: false }
   ];
@@ -249,11 +249,15 @@ async function startStream(){
       stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream;
 
-      // 지원되는 기기는 연속 자동초점으로 설정
+      // 지원되는 기기는 연속 자동초점/노출/화이트밸런스로 설정 (화면이 흐릿하거나 뿌옇게 보이는 문제 완화)
       const track = stream.getVideoTracks()[0];
       const caps = track.getCapabilities ? track.getCapabilities() : {};
-      if(caps.focusMode && caps.focusMode.includes("continuous")){
-        try{ await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); }catch(e){}
+      const advanced = [];
+      if(caps.focusMode && caps.focusMode.includes("continuous")) advanced.push({ focusMode: "continuous" });
+      if(caps.exposureMode && caps.exposureMode.includes("continuous")) advanced.push({ exposureMode: "continuous" });
+      if(caps.whiteBalanceMode && caps.whiteBalanceMode.includes("continuous")) advanced.push({ whiteBalanceMode: "continuous" });
+      if(advanced.length){
+        try{ await track.applyConstraints({ advanced }); }catch(e){}
       }
       return; // 성공하면 종료
     }catch(err){
