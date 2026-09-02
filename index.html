@@ -42,7 +42,6 @@
     position:relative;overflow:hidden;
   }
   .shot .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
-  .shot.done .thumb{border:2px solid var(--done);}
   .shot .badge{
     position:absolute;top:8px;left:8px;width:24px;height:24px;border-radius:50%;
     background:rgba(0,0,0,.55);color:#fff;font-size:12px;font-weight:700;
@@ -302,8 +301,10 @@ function shoot(){
   void flash.offsetWidth; // 리플로우로 애니메이션 재시작
   flash.classList.add("fire");
 
-  captureHighQualityPhoto().then((dataUrl) => {
-    state[activeIndex] = dataUrl;
+  captureHighQualityPhoto().then((blob) => {
+    // 기존 사진(재촬영인 경우) 메모리 해제 후 새 Blob URL로 교체
+    if(state[activeIndex]) URL.revokeObjectURL(state[activeIndex]);
+    state[activeIndex] = URL.createObjectURL(blob);
 
     // 다음 촬영 항목으로 자동 이동, 마지막이면 리스트로 복귀
     const next = state.findIndex((s, i) => !s && i !== activeIndex);
@@ -323,6 +324,7 @@ function shoot(){
 
 // 안드로이드 Chrome 등 ImageCapture 지원 기기: 카메라의 실제 정지사진 파이프라인 사용(고화질)
 // 미지원 기기(아이폰 Safari 등): 비디오 프레임 캡처로 대체
+// Blob을 그대로 반환(base64 변환 없이) → 메모리 사용량과 처리 시간을 줄여 촬영 반응 속도 개선
 async function captureHighQualityPhoto(){
   const track = stream.getVideoTracks()[0];
   if(window.ImageCapture && track){
@@ -336,8 +338,7 @@ async function captureHighQualityPhoto(){
           options.imageHeight = caps.imageHeight.max;
         }
       }catch(e){ /* getPhotoCapabilities 미지원 기기는 기본 옵션으로 진행 */ }
-      const blob = await imageCapture.takePhoto(options);
-      return await blobToDataUrl(blob);
+      return await imageCapture.takePhoto(options);
     }catch(e){
       // 실패 시 비디오 프레임 캡처로 대체
     }
@@ -345,16 +346,7 @@ async function captureHighQualityPhoto(){
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext("2d").drawImage(video, 0, 0);
-  return canvas.toDataURL("image/jpeg", 0.95);
-}
-
-function blobToDataUrl(blob){
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  return await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.95));
 }
 
 async function saveCollage(){
@@ -365,19 +357,14 @@ async function saveCollage(){
   }
   showToast("화면 캡처 중...");
 
-  const target = document.querySelector(".screen");
-  collageBtn.style.visibility = "hidden";
+  // 저장 버튼 등은 제외하고 사진 그리드 영역만 캡처 (여백 최소화)
+  const target = document.getElementById("grid");
 
-  let canvasEl;
-  try{
-    canvasEl = await html2canvas(target, {
-      backgroundColor: "#f5f6f8",
-      useCORS: true,
-      scale: window.devicePixelRatio || 2
-    });
-  }finally{
-    collageBtn.style.visibility = "";
-  }
+  const canvasEl = await html2canvas(target, {
+    backgroundColor: "#f5f6f8",
+    useCORS: true,
+    scale: window.devicePixelRatio || 2
+  });
 
   const blob = await new Promise(resolve => canvasEl.toBlob(resolve, "image/jpeg", 0.92));
 
