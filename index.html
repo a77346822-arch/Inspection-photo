@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>차량 사진 촬영</title>
+<style>
+  :root{
+    --bg:#f5f6f8;
+    --panel:#ffffff;
+    --ink:#1a1d24;
+    --sub:#6b7280;
+    --line:#e3e5ea;
+    --accent:#2f5fe0;
+    --accent-ink:#ffffff;
+    --done:#1f9d55;
+    --danger:#d3382f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+  }
+
+  /* ---------- 리스트 화면 ---------- */
+  .screen{max-width:720px;margin:0 auto;padding:16px 16px 40px;}
+  .tabs{display:flex;gap:8px;margin-bottom:14px;}
+  .tab{
+    flex:1;text-align:center;padding:12px 0;border-radius:10px;
+    font-size:15px;font-weight:600;border:1px solid var(--line);
+    background:var(--panel);color:var(--sub);
+  }
+  .tab.active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+
+  .notice{
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;font-size:12.5px;color:var(--sub);line-height:1.6;margin-bottom:16px;
+  }
+  .notice b{color:var(--ink);}
+
+  .grid{
+    display:grid;grid-template-columns:repeat(2,1fr);gap:12px;
+  }
+  .shot{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;position:relative;cursor:pointer;
+    transition:transform .12s ease;
+  }
+  .shot:active{transform:scale(0.97);}
+  .shot .thumb{
+    aspect-ratio:4/3;background:#eceef2;display:flex;align-items:center;justify-content:center;
+    position:relative;overflow:hidden;
+  }
+  .shot .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .shot.done .thumb{border:2px solid var(--done);}
+  .shot .badge{
+    position:absolute;top:8px;left:8px;width:24px;height:24px;border-radius:50%;
+    background:rgba(0,0,0,.55);color:#fff;font-size:12px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;z-index:2;
+  }
+  .shot.done .badge{background:var(--done);}
+  .shot .cam-icon{
+    width:40px;height:40px;color:#b8bcc6;
+  }
+  .shot .label{
+    padding:9px 10px;font-size:13px;font-weight:600;text-align:center;color:var(--ink);
+  }
+  .shot.done .label{color:var(--done);}
+
+  .footer-btn{
+    position:sticky;bottom:0;margin-top:20px;padding:14px;border-radius:12px;
+    background:#c7cad1;color:#fff;text-align:center;font-weight:700;font-size:15px;
+    border:none;width:100%;
+  }
+  .footer-btn.ready{background:var(--accent);}
+
+  /* ---------- 카메라 화면 ---------- */
+  .camera-screen{
+    position:fixed;inset:0;background:#000;z-index:50;
+    display:none;flex-direction:column;
+  }
+  .camera-screen.open{display:flex;}
+  .cam-top{
+    position:absolute;top:0;left:0;right:0;z-index:5;
+    padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 16px;
+    display:flex;align-items:center;justify-content:space-between;
+    background:linear-gradient(rgba(0,0,0,.6),transparent);
+  }
+  .cam-close{
+    width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.15);
+    color:#fff;border:none;font-size:18px;display:flex;align-items:center;justify-content:center;
+  }
+  .cam-progress{color:#fff;font-size:14px;font-weight:600;}
+  .cam-progress span{color:#9fb4ff;}
+
+  .cam-viewport{flex:1;position:relative;overflow:hidden;background:#000;}
+  video{width:100%;height:100%;object-fit:cover;display:block;}
+  canvas{display:none;}
+
+  .guide-frame{
+    position:absolute;inset:14% 6%;border:2px solid rgba(255,255,255,.85);
+    border-radius:14px;pointer-events:none;
+  }
+  .guide-frame::before,.guide-frame::after{content:"";position:absolute;width:22px;height:22px;border:3px solid #fff;}
+  .guide-frame::before{top:-3px;left:-3px;border-right:none;border-bottom:none;border-radius:6px 0 0 0;}
+  .guide-frame::after{bottom:-3px;right:-3px;border-left:none;border-top:none;border-radius:0 0 6px 0;}
+
+  .guide-label{
+    position:absolute;top:calc(14% - 34px);left:50%;transform:translateX(-50%);
+    background:rgba(47,95,224,.92);color:#fff;padding:6px 16px;border-radius:20px;
+    font-size:14px;font-weight:700;white-space:nowrap;
+  }
+
+  .cam-bottom{
+    position:absolute;bottom:0;left:0;right:0;z-index:5;
+    padding:20px 16px calc(env(safe-area-inset-bottom,0px) + 24px);
+    background:linear-gradient(transparent,rgba(0,0,0,.65));
+    display:flex;align-items:center;justify-content:center;gap:40px;
+  }
+  .flip-btn{
+    width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);
+    color:#fff;border:none;font-size:18px;
+  }
+  .shutter{
+    width:74px;height:74px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.4);
+    position:relative;
+  }
+  .shutter:active{background:#e3e3e3;}
+  .spacer44{width:44px;}
+
+  .flash{
+    position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:9;
+  }
+  .flash.fire{animation:flashfire .25s ease;}
+  @keyframes flashfire{0%{opacity:.9;}100%{opacity:0;}}
+
+  .cam-error{
+    position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    color:#fff;text-align:center;padding:24px;gap:10px;
+  }
+  .cam-error.show{display:flex;}
+  .cam-error p{color:#c7c9cf;font-size:14px;line-height:1.6;margin:0;}
+</style>
+</head>
+<body>
+
+<div class="screen">
+  <div class="tabs">
+    <div class="tab active">차량 사진</div>
+    <div class="tab">점검 항목</div>
+  </div>
+
+  <div class="notice">
+    <b>※ 전면 → 앞유리 → 조수석측 앞 휀다/휠 → 조수석측 뒤 휠/휀다 → 후면 → 운전석측 뒤 휀다/휠 → 운전석측 앞 휠/휀다</b> 순서로 촬영합니다.<br>
+    ※ 사진은 반드시 화면 내 카메라로 직접 촬영해야 하며, 기기에 저장된 이미지는 사용할 수 없습니다.
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <button class="footer-btn" id="submitBtn">사진을 모두 촬영해주세요</button>
+</div>
+
+<div class="camera-screen" id="cameraScreen">
+  <div class="flash" id="flash"></div>
+  <div class="cam-top">
+    <button class="cam-close" id="camClose">✕</button>
+    <div class="cam-progress"><span id="camIndex">1</span> / 11</div>
+    <div style="width:36px;"></div>
+  </div>
+
+  <div class="cam-viewport">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="guide-label" id="guideLabel">전면</div>
+    <div class="guide-frame"></div>
+    <canvas id="canvas"></canvas>
+    <div class="cam-error" id="camError">
+      <p>카메라를 사용할 수 없습니다.<br>브라우저 설정에서 카메라 권한을 허용해주세요.</p>
+    </div>
+  </div>
+
+  <div class="cam-bottom">
+    <button class="flip-btn" id="flipBtn">⟲</button>
+    <button class="shutter" id="shutterBtn"></button>
+    <div class="spacer44"></div>
+  </div>
+</div>
+
+<script>
+const SHOTS = [
+  "전면","앞유리","조수석측 앞 휀다","조수석측 앞 휠",
+  "조수석측 뒤 휠","조수석측 뒤 휀다","후면","운전석측 뒤 휀다",
+  "운전석측 뒤 휠","운전석측 앞 휠","운전석측 앞 휀다"
+];
+
+const state = SHOTS.map(() => null); // dataURL 저장
+let activeIndex = 0;
+let stream = null;
+let facing = "environment"; // 기본 후면 카메라
+
+const grid = document.getElementById("grid");
+const submitBtn = document.getElementById("submitBtn");
+const cameraScreen = document.getElementById("cameraScreen");
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const camIndex = document.getElementById("camIndex");
+const guideLabel = document.getElementById("guideLabel");
+const camError = document.getElementById("camError");
+const flash = document.getElementById("flash");
+
+function renderGrid(){
+  grid.innerHTML = "";
+  SHOTS.forEach((name, i) => {
+    const el = document.createElement("div");
+    el.className = "shot" + (state[i] ? " done" : "");
+    el.innerHTML = `
+      <div class="thumb">
+        <span class="badge">${state[i] ? "✓" : i+1}</span>
+        ${state[i]
+          ? `<img src="${state[i]}" alt="${name}">`
+          : `<svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>`
+        }
+      </div>
+      <div class="label">${name}</div>
+    `;
+    el.addEventListener("click", () => openCamera(i));
+    grid.appendChild(el);
+  });
+  const remaining = state.filter(s => !s).length;
+  if(remaining === 0){
+    submitBtn.textContent = "촬영 완료 · 제출하기";
+    submitBtn.classList.add("ready");
+  } else {
+    submitBtn.textContent = `사진을 모두 촬영해주세요 (${SHOTS.length - remaining}/${SHOTS.length})`;
+    submitBtn.classList.remove("ready");
+  }
+}
+
+async function openCamera(index){
+  activeIndex = index;
+  camIndex.textContent = index + 1;
+  guideLabel.textContent = SHOTS[index];
+  cameraScreen.classList.add("open");
+  await startStream();
+}
+
+async function startStream(){
+  stopStream();
+  camError.classList.remove("show");
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facing } },
+      audio: false
+    });
+    video.srcObject = stream;
+  }catch(err){
+    camError.classList.add("show");
+  }
+}
+
+function stopStream(){
+  if(stream){
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+}
+
+function closeCamera(){
+  stopStream();
+  cameraScreen.classList.remove("open");
+}
+
+function shoot(){
+  if(!stream) return;
+  flash.classList.remove("fire");
+  void flash.offsetWidth; // 리플로우로 애니메이션 재시작
+  flash.classList.add("fire");
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  state[activeIndex] = canvas.toDataURL("image/jpeg", 0.85);
+
+  // 다음 촬영 항목으로 자동 이동, 마지막이면 리스트로 복귀
+  const next = state.findIndex((s, i) => !s && i !== activeIndex);
+  setTimeout(() => {
+    if(next === -1 || state.every(Boolean)){
+      closeCamera();
+      renderGrid();
+    } else {
+      activeIndex = next;
+      camIndex.textContent = next + 1;
+      guideLabel.textContent = SHOTS[next];
+      renderGrid();
+    }
+  }, 180);
+}
+
+document.getElementById("shutterBtn").addEventListener("click", shoot);
+document.getElementById("camClose").addEventListener("click", () => { closeCamera(); renderGrid(); });
+document.getElementById("flipBtn").addEventListener("click", () => {
+  facing = facing === "environment" ? "user" : "environment";
+  startStream();
+});
+submitBtn.addEventListener("click", () => {
+  if(state.every(Boolean)){
+    alert("11장 촬영 완료! 실제 서비스에서는 여기서 서버로 업로드합니다.");
+  }
+});
+
+renderGrid();
+</script>
+</body>
+</html>
