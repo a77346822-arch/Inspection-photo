@@ -48,6 +48,13 @@
     display:flex;align-items:center;justify-content:center;z-index:2;
   }
   .shot.done .badge{background:var(--done);}
+  .shot .save-btn{
+    position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;
+    background:rgba(0,0,0,.55);border:none;color:#fff;z-index:2;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .shot .save-btn svg{width:16px;height:16px;}
+  .shot .save-btn.saved{background:var(--done);}
   .shot .cam-icon{
     width:40px;height:40px;color:#b8bcc6;
   }
@@ -181,6 +188,7 @@ const SHOTS = [
 ];
 
 const state = SHOTS.map(() => null); // dataURL 저장
+const saved = SHOTS.map(() => false); // 개별 저장 여부
 let activeIndex = 0;
 let stream = null;
 let facing = "environment"; // 기본 후면 카메라
@@ -204,12 +212,18 @@ function renderGrid(){
       <div class="thumb">
         <span class="badge">${state[i] ? "✓" : i+1}</span>
         ${state[i]
-          ? `<img src="${state[i]}" alt="${name}">`
+          ? `<img src="${state[i]}" alt="${name}"><button class="save-btn ${saved[i] ? "saved" : ""}" data-idx="${i}" title="이 사진 저장"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14"/></svg></button>`
           : `<svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>`
         }
       </div>
       <div class="label">${name}</div>
     `;
+    if(state[i]){
+      el.querySelector(".save-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        saveSinglePhoto(i);
+      });
+    }
     el.querySelector(".thumb").addEventListener("click", () => openCamera(i));
     grid.appendChild(el);
   });
@@ -269,6 +283,9 @@ function shoot(){
   canvas.getContext("2d").drawImage(video, 0, 0);
   state[activeIndex] = canvas.toDataURL("image/jpeg", 0.85);
 
+  // 촬영 즉시 기기에 저장 시도 (안드로이드: 완전 자동 / 아이폰: 공유 시트 1탭)
+  autoSaveToDevice(activeIndex, canvas);
+
   // 다음 촬영 항목으로 자동 이동, 마지막이면 리스트로 복귀
   const next = state.findIndex((s, i) => !s && i !== activeIndex);
   setTimeout(() => {
@@ -284,6 +301,72 @@ function shoot(){
   }, 180);
 }
 
+const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) && !window.MSStream;
+
+function autoSaveToDevice(index, canvasEl){
+  canvasEl.toBlob(async (blob) => {
+    if(!blob){
+      showToast("자동 저장 실패: 이미지 변환 오류");
+      return;
+    }
+    const filename = `${index+1}_${SHOTS[index]}.jpg`;
+    const file = new File([blob], filename, { type: "image/jpeg" });
+
+    if(isIOS){
+      // 아이폰: 애플 정책상 무탭 자동 저장이 불가능 → 공유 시트를 자동으로 띄워 1탭으로 저장
+      if(navigator.canShare && navigator.canShare({ files: [file] })){
+        try{
+          await navigator.share({ files: [file], title: SHOTS[index] });
+          saved[index] = true;
+          renderGrid();
+          showToast(`"${SHOTS[index]}" 저장됨`);
+        }catch(e){
+          if(e.name !== "AbortError"){
+            showToast("저장 실패: " + e.message);
+          }
+        }
+      }else{
+        showToast("이 브라우저는 자동 저장을 지원하지 않습니다. ↓ 아이콘으로 저장해주세요");
+      }
+      return;
+    }
+
+    // 안드로이드: blob 다운로드로 완전 자동 저장
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    saved[index] = true;
+    renderGrid();
+    showToast(`"${SHOTS[index]}" 저장됨 (다운로드 폴더)`);
+  }, "image/jpeg", 0.85);
+}
+
+async function saveSinglePhoto(index){
+  const dataUrl = state[index];
+  if(!dataUrl) return;
+  const filename = `${index+1}_${SHOTS[index]}.jpg`;
+  const blob = await (await fetch(dataUrl)).blob();
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+
+  saved[index] = true;
+  renderGrid();
+  const remain = state.filter((v,i)=>v && !saved[i]).length;
+  showToast(remain === 0 ? "모두 저장 완료!" : `저장됨 (남은 사진 ${remain}장)`);
+}
+
 async function saveAllPhotos(){
   const capturedIdx = state.map((v,i)=>v?i:null).filter(i=>i!==null);
   if(capturedIdx.length === 0) return;
@@ -295,11 +378,13 @@ async function saveAllPhotos(){
     files.push(new File([blob], `${i+1}_${SHOTS[i]}.jpg`, { type: "image/jpeg" }));
   }
 
-  // 1순위: 공유 시트에 여러 장을 한 번에 전달 (갤러리 앱으로 '저장'하면 개별 이미지로 저장됨)
+  // 1순위: 공유 시트에 여러 장을 한 번에 전달 (구글 포토 등 다중 이미지 지원 앱으로 저장 가능)
   if(navigator.canShare && navigator.canShare({ files })){
     try{
       await navigator.share({ files, title: "차량 사진" });
-      showToast("공유 시트에서 '갤러리' 또는 '내 파일'을 선택해 저장해주세요");
+      capturedIdx.forEach(i => saved[i] = true);
+      renderGrid();
+      showToast("공유 시트에서 '구글 포토' 등 다중 저장 지원 앱을 선택해주세요");
       return;
     }catch(e){
       if(e.name === "AbortError"){
@@ -309,22 +394,9 @@ async function saveAllPhotos(){
     }
   }
 
-  // 2순위: 공유 API 미지원 시, 이미지를 한 장씩 순차 다운로드
-  showToast("여러 파일 다운로드 허용 알림이 뜨면 '허용'을 눌러주세요");
-  await new Promise(r => setTimeout(r, 1200));
-  for(let n=0;n<files.length;n++){
-    const url = URL.createObjectURL(files[n]);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = files[n].name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-    showToast(`저장 중... (${n+1}/${files.length})`);
-    await new Promise(r => setTimeout(r, 900));
-  }
-  showToast(`${files.length}장을 다운로드 폴더에 저장했습니다`);
+  // 2순위: 공유 API 미지원 브라우저 — 자동 다운로드는 두 번째 파일부터 브라우저가 막을 수 있어
+  // 신뢰할 수 없으므로, 각 사진의 저장 아이콘을 직접 눌러 저장하도록 안내
+  showToast("이 브라우저는 한번에 여러 장 저장이 안 됩니다. 각 사진의 ↓ 아이콘을 눌러 저장해주세요");
 }
 
 let toastTimer = null;
